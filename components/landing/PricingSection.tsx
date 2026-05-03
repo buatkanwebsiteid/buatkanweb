@@ -1,12 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function PricingSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const [isEarlyAdopter, setIsEarlyAdopter] = useState(true);
+  const { user } = useAuth();
+  const router = useRouter();
+
+  const handleCTA = () => {
+    if (user) {
+      router.push("/buat");
+    } else {
+      router.push("/auth/login");
+    }
+  };
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -95,9 +106,9 @@ export default function PricingSection() {
 
             {/* Row 5: CTA */}
             <div className="mb-6">
-              <Link href="/buat" className="block w-full py-3 px-4 rounded-xl border border-slate-200 bg-transparent text-[#1e3a5f] font-semibold text-center text-[13px] hover:bg-slate-50 hover:border-slate-300 transition-all duration-300">
+              <button onClick={handleCTA} className="block w-full py-3 px-4 rounded-xl border border-slate-200 bg-transparent text-[#1e3a5f] font-semibold text-center text-[13px] hover:bg-slate-50 hover:border-slate-300 transition-all duration-300 cursor-pointer">
                 Mulai Gratis &rarr;
-              </Link>
+              </button>
             </div>
 
             {/* Row 6: Separator */}
@@ -166,9 +177,9 @@ export default function PricingSection() {
 
             {/* Row 5: CTA */}
             <div className="mb-6">
-              <Link href="/buat" className="block w-full py-3 px-4 rounded-xl bg-[#67BAF4] text-[#0D0D0D] font-bold text-center text-[13px] hover:bg-white transition-all duration-300 shadow-lg shadow-[#67BAF4]/20 hover:shadow-xl hover:shadow-[#67BAF4]/30 hover:scale-[1.02]">
+              <button onClick={handleCTA} className="block w-full py-3 px-4 rounded-xl bg-[#67BAF4] text-[#0D0D0D] font-bold text-center text-[13px] hover:bg-white transition-all duration-300 shadow-lg shadow-[#67BAF4]/20 hover:shadow-xl hover:shadow-[#67BAF4]/30 hover:scale-[1.02] cursor-pointer">
                 Buat Website Sekarang &rarr;
-              </Link>
+              </button>
             </div>
 
             {/* Row 6: Separator */}

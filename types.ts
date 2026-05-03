@@ -20,7 +20,10 @@ export interface FormData {
   // Step 2 — Detail Bisnis
   keunggulan: string;
   layananSpesifik: string[];
-  targetPelanggan: string[];
+  usia: string[];
+  statusKeluarga: string[];
+  pekerjaan: string[];
+  gayaHidup: string[];
   paketHarga: PaketHarga[];
   // Step 3 — Visual & Aset
   tema: "dark" | "light" | "";
@@ -30,23 +33,74 @@ export interface FormData {
   portofolio: string[];
 }
 
-export interface TemplateData {
-  namaBisnis: string;
+export interface AIHeroSection {
+  headline: string;
+  subheadline: string;
+  ctaText: string;
+}
+
+export interface AIAboutSection {
+  judul: string;
+  deskripsi: string;
+  keunggulan: string[];
+}
+
+export interface AILayananItem {
+  nama: string;
+  deskripsi: string;
+  harga: string;
+}
+
+export interface AITargetPelanggan {
+  deskripsi: string;
+  painPoint: string;
+  solusi: string;
+}
+
+export interface AITestimonial {
+  nama: string;
+  peran: string;
+  teks: string;
+}
+
+export interface AIFooter {
   tagline: string;
-  deskripsiPendek: string;
-  daftarLayanan: string[];
-  nomorWhatsApp: string;
-  telepon: string;
-  email: string;
-  instagram: string;
-  x_twitter: string;
-  tiktok: string;
-  keunggulan: string;
-  primaryColor: string;
+  ctaText: string;
+}
+
+export interface TemplateData {
+  // From AI (Claude)
+  hero: AIHeroSection;
+  about: AIAboutSection;
+  layanan: AILayananItem[];
+  targetPelanggan: AITargetPelanggan;
+  testimonialPlaceholder: AITestimonial[];
+  footer: AIFooter;
+
+  // From Form Data & Storage
+  namaBisnis: string;
+  kategori: string;
+  lokasi: string;
+  
+  kontak: {
+    wa: string;
+    telepon: string;
+    email: string;
+  };
+  
+  sosmed: {
+    instagram: string;
+    tiktok: string;
+    twitter: string;
+  };
+  
+  warna: {
+    primary: string;
+    tema: "dark" | "light";
+  };
+  
+  paketHarga: PaketHarga[];
   logo: string;
   fotoBisnis: string[];
   portofolio: string[];
-  paketHarga: PaketHarga[];
-  targetPelanggan: string[];
-  tema: "dark" | "light";
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
+import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -13,6 +14,9 @@ export const metadata: Metadata = {
   description:
     "Buat website profesional untuk bisnis Anda dalam 5 menit. Tanpa coding, tanpa prompt — cukup isi form sederhana. Solusi website terjangkau untuk UMKM Indonesia.",
   keywords: "website builder, UMKM, landing page, buat website, website murah, zero prompting, AI website",
+  icons: {
+    icon: "/Logo buatkanweb.webp",
+  },
   openGraph: {
     title: "BuatkanWeb.id",
     description: "Website profesional untuk UMKM Indonesia. Siap dalam 5 menit, tanpa coding.",
@@ -28,7 +32,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id" className={`${montserrat.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
+

@@ -1,6 +1,20 @@
-import Link from "next/link";
+"use client";
+
+import { useAuth } from "@/components/AuthProvider";
+import { useRouter } from "next/navigation";
 
 export default function HeroSection() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  const handleCTA = () => {
+    if (user) {
+      router.push("/buat");
+    } else {
+      router.push("/auth/login");
+    }
+  };
+
   return (
     <section
       id="beranda"
@@ -51,9 +65,10 @@ export default function HeroSection() {
           className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 animate-fade-in-up"
           style={{ animationDelay: "0.3s" }}
         >
-          <Link
-            href="/buat"
-            className="group relative inline-flex items-center justify-center gap-3 bg-gradient-to-b from-[#255580] to-[#1E466B] hover:from-[#2c6596] hover:to-[#255580] text-white font-bold text-[16px] px-10 py-4 sm:py-5 rounded-2xl transition-all duration-300 shadow-[0_0_40px_-10px_rgba(30,70,107,0.5)] hover:shadow-[0_0_60px_-15px_rgba(103,186,244,0.4)] hover:-translate-y-1 w-full sm:w-auto"
+          <button
+            onClick={handleCTA}
+            disabled={loading}
+            className="group relative inline-flex items-center justify-center gap-3 bg-gradient-to-b from-[#255580] to-[#1E466B] hover:from-[#2c6596] hover:to-[#255580] text-white font-bold text-[16px] px-10 py-4 sm:py-5 rounded-2xl transition-all duration-300 shadow-[0_0_40px_-10px_rgba(30,70,107,0.5)] hover:shadow-[0_0_60px_-15px_rgba(103,186,244,0.4)] hover:-translate-y-1 w-full sm:w-auto cursor-pointer disabled:opacity-50"
           >
             <span className="absolute inset-0 rounded-2xl border border-white/10 group-hover:border-white/20 transition-colors" />
             Buat Website Sekarang
@@ -63,7 +78,7 @@ export default function HeroSection() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
             </svg>
-          </Link>
+          </button>
           <a
             href="#portofolio"
             className="group w-full sm:w-auto inline-flex items-center justify-center gap-3 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-semibold text-[16px] px-10 py-4 sm:py-5 rounded-2xl transition-all duration-300 hover:bg-zinc-800/50 backdrop-blur-sm"

@@ -1,0 +1,496 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { LogOut, Plus, Eye, MessageSquare, RefreshCw, Clock, Globe, Trash2, Loader2, Edit2, Check, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase'
+
+interface Website {
+    id: string
+    nama_bisnis: string
+    kategori_jasa: string
+    status: 'preview' | 'active' | 'expired'
+    created_at: string
+    expires_at: string | null
+}
+
+interface DashboardClientProps {
+    userName: string
+    userEmail: string
+    userAvatar: string | null
+    websites: Website[]
+    generatedToday: number
+    totalWebsites: number
+    activeWebsites: number
+}
+
+const MAX_DAILY = 3
+
+function getDaysLeft(expiresAt: string | null): number {
+    if (!expiresAt) return 0
+    const now = new Date()
+    const exp = new Date(expiresAt)
+    const diff = exp.getTime() - now.getTime()
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
+
+function getStatusBadge(status: string) {
+    switch (status) {
+        case 'active':
+            return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">● Aktif</span>
+        case 'preview':
+            return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">● Preview</span>
+        case 'expired':
+            return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">● Expired</span>
+        default:
+            return null
+    }
+}
+
+function getCategoryBadge(kategori: string) {
+    const colorMap: Record<string, string> = {
+        'Servis AC': 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+        'Fotografer': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+        'Bengkel': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+        'Katering': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
+        'Cleaning Service': 'bg-teal-500/10 text-teal-400 border-teal-500/20',
+        'Klinik': 'bg-red-500/10 text-red-400 border-red-500/20',
+    }
+    const cls = colorMap[kategori] || 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+    return <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold border ${cls}`}>{kategori}</span>
+}
+
+export default function DashboardClient({
+    userName,
+    userEmail,
+    userAvatar,
+    websites,
+    generatedToday,
+    totalWebsites,
+    activeWebsites,
+}: DashboardClientProps) {
+    const [dropdownOpen, setDropdownOpen] = useState(false)
+    const dropdownRef = useRef<HTMLDivElement>(null)
+    const router = useRouter()
+    
+    // Rename state
+    const [renamingId, setRenamingId] = useState<string | null>(null)
+    const [renameValue, setRenameValue] = useState("")
+    const [isRenaming, setIsRenaming] = useState(false)
+    const supabase = createClient()
+
+    const quotaLeft = MAX_DAILY - generatedToday
+    const quotaExhausted = quotaLeft <= 0
+    const limitReached = totalWebsites >= 6
+
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+
+    const handleDeleteWebsite = async (id: string) => {
+        setIsDeleting(true)
+        try {
+            const { error } = await supabase.from('websites').delete().eq('id', id)
+            if (error) throw error
+            setDeleteConfirmId(null)
+            router.refresh()
+        } catch (err) {
+            console.error(err)
+            alert("Gagal menghapus website")
+        } finally {
+            setIsDeleting(false)
+        }
+    }
+
+    const handleRename = async (id: string) => {
+        if (!renameValue.trim()) return;
+        setIsRenaming(true);
+        try {
+            const { error } = await supabase.from('websites').update({ nama_usaha: renameValue.trim() }).eq('id', id)
+            if (error) throw error;
+            setRenamingId(null)
+            router.refresh()
+        } catch (err) {
+            console.error('Failed to rename website', err)
+            alert('Gagal mengubah nama website.')
+        } finally {
+            setIsRenaming(false)
+        }
+    }
+
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setDropdownOpen(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClick)
+        return () => document.removeEventListener('mousedown', handleClick)
+    }, [])
+
+    const handleSignOut = async () => {
+        await supabase.auth.signOut()
+        router.push('/')
+        router.refresh()
+    }
+
+    const initials = userName
+        .split(' ')
+        .map((n: string) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+
+    return (
+        <div className="min-h-screen bg-[#0a0a0a] relative overflow-hidden">
+            {/* Background Decorations */}
+            <div className="fixed inset-0 z-0 pointer-events-none">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#111827]/60 via-[#0a0a0a] to-[#0a0a0a]" />
+                <div className="absolute top-[-10%] right-[10%] w-[500px] h-[500px] rounded-full bg-[#1E466B]/8 blur-[150px]" />
+                <div className="absolute bottom-[20%] left-[-5%] w-[400px] h-[400px] rounded-full bg-purple-500/5 blur-[130px]" />
+                <div className="absolute top-[50%] right-[-10%] w-[350px] h-[350px] rounded-full bg-[#67BAF4]/5 blur-[120px]" />
+                <div
+                    className="absolute inset-0 opacity-[0.015]"
+                    style={{
+                        backgroundImage: `linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)`,
+                        backgroundSize: '60px 60px',
+                    }}
+                />
+            </div>
+            {/* ═══ HEADER ═══ */}
+            <header className="sticky top-0 z-50 bg-[#0D0D0D]/80 backdrop-blur-xl border-b border-white/5">
+                <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <Link href="/" className="flex items-center gap-2.5 group">
+                            <img src="/Logo buatkanweb.webp" alt="BuatkanWeb.id" className="w-8 h-8 rounded-lg object-contain transition-transform group-hover:scale-105" />
+                            <span className="font-bold text-[15px] tracking-tight text-white">
+                                BuatkanWeb<span className="text-[#67BAF4]">.id</span>
+                            </span>
+                        </Link>
+                        <span className="hidden sm:block text-zinc-600 text-[13px]">/</span>
+                        <span className="hidden sm:block text-zinc-400 text-[13px] font-medium">Dashboard</span>
+                    </div>
+
+                    {/* User Menu */}
+                    <div className="relative" ref={dropdownRef}>
+                        <button
+                            onClick={() => setDropdownOpen(!dropdownOpen)}
+                            className="flex items-center gap-2.5 cursor-pointer rounded-full hover:ring-2 hover:ring-white/10 transition-all p-1"
+                        >
+                            {userAvatar ? (
+                                <img src={userAvatar} alt={userName} className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1E466B] to-[#67BAF4] flex items-center justify-center text-white text-[12px] font-bold select-none">
+                                    {initials}
+                                </div>
+                            )}
+                            <span className="hidden sm:block text-white text-[13px] font-medium max-w-[120px] truncate">{userName}</span>
+                        </button>
+
+                        {dropdownOpen && (
+                            <div className="absolute right-0 top-12 w-56 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl shadow-black/50 py-1.5 animate-fade-in-up" style={{ animationDuration: '0.15s' }}>
+                                <div className="px-4 py-3 border-b border-zinc-800">
+                                    <p className="text-white text-[13px] font-semibold truncate">{userName}</p>
+                                    <p className="text-zinc-500 text-[12px] truncate">{userEmail}</p>
+                                </div>
+                                <button
+                                    onClick={handleSignOut}
+                                    className="flex items-center gap-2.5 px-4 py-2.5 text-zinc-300 hover:text-red-400 hover:bg-white/5 text-[13px] transition-colors w-full text-left cursor-pointer"
+                                >
+                                    <LogOut className="w-4 h-4" />
+                                    Keluar
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </header>
+
+            <main className="relative z-10 max-w-6xl mx-auto px-5 sm:px-8 py-8 sm:py-12">
+                {/* ═══ GREETING ═══ */}
+                <div className="mb-8 sm:mb-10">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                        Halo, {userName}!
+                    </h1>
+                    <p className="text-zinc-400 text-[14px] sm:text-[15px] mt-1.5">
+                        Siap digitalisasi usahamu hari ini?
+                    </p>
+                </div>
+
+                {/* ═══ STATS BAR ═══ */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-8 sm:mb-10">
+                    {/* Quota */}
+                    <div className="relative overflow-hidden bg-gradient-to-br from-[#0f1a2e] to-[#162a4a] border border-[#1E466B]/40 rounded-2xl p-5 sm:p-6 transition-all duration-300 hover:border-[#1E466B]/60 shadow-[0_4px_24px_-4px_rgba(30,70,107,0.15)] hover:shadow-[0_8px_32px_-4px_rgba(30,70,107,0.25)]">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#67BAF4]/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                        <span className="text-zinc-400 text-[11px] font-semibold tracking-[0.15em] uppercase block mb-3">Generate Hari Ini</span>
+                        <p className="text-white text-3xl font-extrabold tracking-tight mb-2.5">
+                            {quotaLeft} <span className="text-zinc-500 text-[13px] font-medium">/ {MAX_DAILY} tersisa</span>
+                        </p>
+                        <div className="w-full h-1.5 bg-[#0a1020] rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${quotaExhausted ? 'bg-red-500' : 'bg-gradient-to-r from-[#1E466B] to-[#67BAF4]'}`}
+                                style={{ width: `${(quotaLeft / MAX_DAILY) * 100}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Total */}
+                    <div className={`relative overflow-hidden bg-gradient-to-br ${limitReached ? 'from-[#2e0f0f] to-[#4a1616] border-red-500/40 hover:border-red-500/60 shadow-[0_4px_24px_-4px_rgba(239,68,68,0.15)] hover:shadow-[0_8px_32px_-4px_rgba(239,68,68,0.25)]' : 'from-[#150f2e] to-[#1f1640] border-purple-500/20 hover:border-purple-500/35 shadow-[0_4px_24px_-4px_rgba(147,51,234,0.1)] hover:shadow-[0_8px_32px_-4px_rgba(147,51,234,0.18)]'} rounded-2xl p-5 sm:p-6 transition-all duration-300`}>
+                        <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none ${limitReached ? 'bg-red-500/10' : 'bg-purple-500/5'}`} />
+                        <span className="text-zinc-400 text-[11px] font-semibold tracking-[0.15em] uppercase block mb-3">Total Website</span>
+                        <p className="text-white text-3xl font-extrabold tracking-tight mb-2.5">
+                            {totalWebsites} <span className="text-zinc-500 text-[13px] font-medium">/ 6 Kapasitas</span>
+                        </p>
+                        <div className="w-full h-1.5 bg-[#0a1020] rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${limitReached ? 'bg-red-500' : 'bg-gradient-to-r from-purple-600 to-purple-400'}`}
+                                style={{ width: `${(Math.min(totalWebsites, 6) / 6) * 100}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Active */}
+                    <div className="relative overflow-hidden bg-gradient-to-br from-[#0a1f17] to-[#0f2e22] border border-emerald-500/20 rounded-2xl p-5 sm:p-6 transition-all duration-300 hover:border-emerald-500/35 shadow-[0_4px_24px_-4px_rgba(16,185,129,0.1)] hover:shadow-[0_8px_32px_-4px_rgba(16,185,129,0.18)]">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                        <span className="text-zinc-400 text-[11px] font-semibold tracking-[0.15em] uppercase block mb-3">Website Aktif</span>
+                        <p className="text-white text-3xl font-extrabold tracking-tight">{activeWebsites}</p>
+                    </div>
+                </div>
+
+                {/* ═══ CTA BUTTON ═══ */}
+                <div className="mb-10 sm:mb-12">
+                    {limitReached ? (
+                        <div className="inline-block w-full sm:w-auto">
+                            <button
+                                disabled
+                                className="w-full flex items-center justify-center gap-3 bg-[#1a1a1a] text-[#71717a] font-bold text-[15px] px-8 py-4 rounded-2xl cursor-not-allowed border border-[#27272a]"
+                            >
+                                <Globe className="w-5 h-5" />
+                                Batas Website Tercapai (6/6)
+                            </button>
+                            <p className="text-zinc-500 text-[12px] text-center sm:text-left mt-2.5 ml-2">Hapus website preview untuk membuat baru</p>
+                        </div>
+                    ) : quotaExhausted ? (
+                        <button
+                            disabled
+                            className="w-full sm:w-auto flex items-center justify-center gap-3 bg-zinc-800 text-zinc-500 font-bold text-[15px] px-8 py-4 rounded-2xl cursor-not-allowed border border-zinc-700"
+                        >
+                            <Clock className="w-5 h-5" />
+                            Kuota Hari Ini Habis, Coba Lagi Besok
+                        </button>
+                    ) : (
+                        <Link
+                            href="/dashboard/template"
+                            className="group w-full sm:w-auto inline-flex items-center justify-center gap-3 bg-gradient-to-r from-[#1E466B] via-[#255580] to-[#67BAF4] hover:from-[#255580] hover:via-[#1E466B] hover:to-[#255580] text-white font-bold text-[15px] px-8 py-4 rounded-2xl transition-all duration-300 shadow-[0_0_40px_-10px_rgba(30,70,107,0.5)] hover:shadow-[0_0_60px_-15px_rgba(103,186,244,0.4)] hover:-translate-y-0.5"
+                        >
+                            <Plus className="w-5 h-5" />
+                            Buat Website Baru
+                            <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                            </svg>
+                        </Link>
+                    )}
+                </div>
+
+                {/* ═══ WEBSITE SAYA ═══ */}
+                <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-6">Website Saya</h2>
+
+                    {websites.length === 0 ? (
+                        /* Empty State */
+                        <div className="bg-[#18181b] border border-zinc-800/80 border-dashed rounded-2xl p-10 sm:p-16 text-center">
+                            <div className="w-16 h-16 bg-[#1E466B]/15 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                                <Globe className="w-7 h-7 text-[#67BAF4]" />
+                            </div>
+                            <h3 className="text-white text-lg font-bold mb-2">Belum ada website</h3>
+                            <p className="text-zinc-500 text-[14px] mb-6 max-w-sm mx-auto">
+                                Yuk buat website pertamamu! Cukup isi form sederhana dan website profesionalmu siap dalam 5 menit.
+                            </p>
+                            <Link
+                                href="/dashboard/template"
+                                className="inline-flex items-center gap-2 bg-[#1E466B] hover:bg-[#255580] text-white text-[14px] font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-lg shadow-[#1E466B]/20"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Buat Website Pertamamu
+                            </Link>
+                        </div>
+                    ) : (
+                        /* Website Grid */
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                            {websites.map((site) => {
+                                const daysLeft = getDaysLeft(site.expires_at)
+
+                                return (
+                                    <div
+                                        key={site.id}
+                                        className="bg-[#18181b] border border-zinc-800/80 rounded-2xl overflow-hidden hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-300 group flex flex-col"
+                                    >
+                                        {/* Thumbnail Preview */}
+                                        <div style={{
+                                          position: 'relative',
+                                          width: '100%',
+                                          height: '200px',
+                                          overflow: 'hidden',
+                                          backgroundColor: '#0a0a0a',
+                                          borderBottom: '1px solid rgba(255,255,255,0.05)'
+                                        }}>
+                                          {site.status === 'preview' && (
+                                              <button
+                                                  onClick={(e) => { e.preventDefault(); setDeleteConfirmId(site.id) }}
+                                                  className="absolute top-3 right-3 z-20 w-8 h-8 bg-black/60 hover:bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-zinc-300 hover:text-white transition-all duration-200"
+                                              >
+                                                  <Trash2 className="w-4 h-4" />
+                                              </button>
+                                          )}
+                                          
+                                          {deleteConfirmId === site.id && (
+                                              <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
+                                                  <p className="text-white text-[13px] font-medium mb-3">Hapus website ini? Tindakan ini tidak bisa dibatalkan.</p>
+                                                  <div className="flex gap-2">
+                                                      <button 
+                                                          onClick={(e) => { e.preventDefault(); setDeleteConfirmId(null) }}
+                                                          disabled={isDeleting}
+                                                          className="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 text-[12px] font-medium hover:bg-zinc-700 disabled:opacity-50"
+                                                      >
+                                                          Batal
+                                                      </button>
+                                                      <button 
+                                                          onClick={(e) => { e.preventDefault(); handleDeleteWebsite(site.id) }}
+                                                          disabled={isDeleting}
+                                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500 text-white text-[12px] font-medium hover:bg-red-600 disabled:opacity-50"
+                                                      >
+                                                          {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                                          Hapus
+                                                      </button>
+                                                  </div>
+                                              </div>
+                                          )}
+                                          <iframe
+                                            src={`/preview/${site.id}?embed=true`}
+                                            scrolling="no"
+                                            onError={() => console.log('iframe failed to load:', site.id)}
+                                            style={{
+                                              position: 'absolute',
+                                              top: 0,
+                                              left: '50%',
+                                              width: '1200px',
+                                              height: '800px',
+                                              transform: 'scale(0.32)',
+                                              transformOrigin: 'top left',
+                                              pointerEvents: 'none',
+                                              border: 'none',
+                                              marginLeft: '-192px' /* Setengah dari width setelah di-scale (1200 * 0.32 / 2) */
+                                            }}
+                                          />
+                                          <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '30px',
+                                            background: 'linear-gradient(to bottom, transparent, #18181b)'
+                                          }} />
+                                        </div>
+
+                                        <div className="p-5 sm:p-6 flex flex-col flex-1">
+                                            {/* Top */}
+                                            <div className="flex items-start justify-between gap-3 mb-3">
+                                                {renamingId === site.id ? (
+                                                    <div className="flex-1 flex items-center gap-2">
+                                                        <input 
+                                                            autoFocus
+                                                            type="text" 
+                                                            value={renameValue}
+                                                            onChange={(e) => setRenameValue(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleRename(site.id)
+                                                                if (e.key === 'Escape') setRenamingId(null)
+                                                            }}
+                                                            disabled={isRenaming}
+                                                            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[14px] text-white focus:outline-none focus:border-[#67BAF4]"
+                                                        />
+                                                        <button 
+                                                            onClick={(e) => { e.preventDefault(); handleRename(site.id) }} 
+                                                            disabled={isRenaming}
+                                                            className="p-1 text-green-400 hover:bg-zinc-800 rounded"
+                                                        >
+                                                            {isRenaming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.preventDefault(); setRenamingId(null) }} 
+                                                            disabled={isRenaming}
+                                                            className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded"
+                                                        >
+                                                            <X className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                        <h3 className="text-white font-bold text-[15px] leading-snug group-hover:text-[#67BAF4] transition-colors truncate min-w-0">
+                                                            {site.nama_bisnis || "Website Baru"}
+                                                        </h3>
+                                                        <button 
+                                                            onClick={(e) => { 
+                                                                e.preventDefault(); 
+                                                                setRenamingId(site.id);
+                                                                setRenameValue(site.nama_bisnis || "");
+                                                            }}
+                                                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all"
+                                                            title="Ubah Nama"
+                                                        >
+                                                            <Edit2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {getStatusBadge(site.status)}
+                                            </div>
+
+                                        {/* Category */}
+                                        {site.kategori_jasa && (
+                                            <div className="mb-4">
+                                                {getCategoryBadge(site.kategori_jasa)}
+                                            </div>
+                                        )}
+
+                                        {/* Countdown for preview */}
+                                        {site.status === 'preview' && site.expires_at && (
+                                            <div className="flex items-center gap-1.5 mb-4 text-amber-400/80 text-[12px] font-medium">
+                                                <Clock className="w-3.5 h-3.5" />
+                                                Sisa {daysLeft} hari preview
+                                            </div>
+                                        )}
+
+                                        {/* Spacer */}
+                                        <div className="flex-1" />
+
+                                        {/* Actions */}
+                                        <div className="flex flex-col gap-2 mt-2">
+                                            {site.status === 'expired' ? (
+                                                <Link
+                                                    href="/#harga"
+                                                    className="flex items-center justify-center gap-2 bg-[#1E466B] hover:bg-[#255580] text-white text-[13px] font-semibold py-2.5 px-4 rounded-xl transition-all"
+                                                >
+                                                    <RefreshCw className="w-3.5 h-3.5" />
+                                                    Perpanjang
+                                                </Link>
+                                            ) : (
+                                                <Link
+                                                    href={`/buat?id=${site.id}`}
+                                                    className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-[13px] font-semibold py-2.5 px-4 rounded-xl transition-all"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    Lihat Preview
+                                                </Link>
+                                            )}
+                                        </div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            </main>
+        </div>
+    )
+}

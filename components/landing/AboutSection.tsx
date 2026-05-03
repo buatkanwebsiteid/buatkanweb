@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/AuthProvider";
 
 function useCountUp(end: number, duration: number = 2000, trigger: boolean) {
   const [count, setCount] = useState(0);
@@ -70,6 +71,12 @@ const StatCard = ({
 export default function AboutSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const [inView, setInView] = useState(false);
+  const { user } = useAuth();
+  const router = useRouter();
+
+  const handleCTA = () => {
+    router.push(user ? "/buat" : "/auth/login");
+  };
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -169,15 +176,15 @@ export default function AboutSection() {
               <p className="text-white/80 text-[15px] sm:text-[16px] leading-relaxed mb-10">
                 Bergabung bersama UMKM yang sudah hadir secara digital tanpa coding, tanpa ribet.
               </p>
-              <Link
-                href="/buat"
-                className="inline-flex items-center justify-center w-full sm:w-auto gap-3 bg-white text-[#1E466B] font-bold text-[16px] px-8 py-4 sm:py-5 rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] hover:scale-[1.02] border border-white/10 hover:bg-zinc-50"
+              <button
+                onClick={handleCTA}
+                className="inline-flex items-center justify-center w-full sm:w-auto gap-3 bg-white text-[#1E466B] font-bold text-[16px] px-8 py-4 sm:py-5 rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] hover:scale-[1.02] border border-white/10 hover:bg-zinc-50 cursor-pointer"
               >
                 Buat Website Sekarang
                 <svg className="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                 </svg>
-              </Link>
+              </button>
             </div>
           </div>
 

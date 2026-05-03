@@ -1,4 +1,8 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/components/AuthProvider";
 
 const NAV_LINKS = [
   { label: "Beranda", href: "#beranda" },
@@ -9,6 +13,13 @@ const NAV_LINKS = [
 ];
 
 export default function Footer() {
+  const { user } = useAuth();
+  const router = useRouter();
+
+  const handleCTA = () => {
+    router.push(user ? "/buat" : "/auth/login");
+  };
+
   return (
     <footer className="bg-[#0D0D0D] border-t border-white/5">
       <div className="max-w-6xl mx-auto px-5 sm:px-8 py-14 sm:py-16">
@@ -92,15 +103,15 @@ export default function Footer() {
             <p className="text-zinc-500 text-[13px] leading-relaxed mb-4">
               Buat website untuk bisnis Anda secara gratis dalam hitungan menit.
             </p>
-            <Link
-              href="/buat"
-              className="inline-flex items-center gap-2 bg-[#1E466B] hover:bg-[#255580] text-white text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-[#1E466B]/20"
+            <button
+              onClick={handleCTA}
+              className="inline-flex items-center gap-2 bg-[#1E466B] hover:bg-[#255580] text-white text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-[#1E466B]/20 cursor-pointer"
             >
               Buat Website Gratis
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
               </svg>
-            </Link>
+            </button>
           </div>
         </div>
 

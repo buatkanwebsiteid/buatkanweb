@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { TemplateData, FormData, PaketHarga } from "@/types";
 import TemplateSatu from "@/components/templates/TemplateSatu";
+import { createClient } from "@/lib/supabase";
 import { SearchableCombobox } from "@/components/ui/SearchableCombobox";
 import { AutocompleteInput } from "@/components/ui/AutocompleteInput";
-import { AutocompleteTagInput } from "@/components/ui/TagInput";
+import { MultiSelectDropdown } from "@/components/ui/MultiSelectDropdown";
 import {
   Monitor, Smartphone, Loader2, Globe,
   ChevronLeft, ChevronRight, ArrowRight, ArrowLeft, Eye, PenLine,
@@ -20,17 +22,15 @@ const KATEGORI_SUGGESTIONS = [
   "Servis AC", "Fotografer & Videografer", "Katering", "Bengkel Mobil & Motor",
   "Klinik Kesehatan", "Konsultan Keuangan", "Jasa Pembersihan", "Agensi Kreatif",
 ];
-const LAYANAN_SUGGESTIONS = [
-  { items: ["Konsultasi Gratis", "Servis Rutin", "Instalasi Baru", "Perbaikan & Reparasi", "Perawatan Berkala", "Home Visit / Panggilan", "Custom Order", "Desain & Branding", "Fotografi Produk", "Videografi", "Catering & Snack Box", "Deep Cleaning", "Training / Pelatihan", "Pengiriman & Instalasi", "Paket Langganan"] },
+const LAYANAN_OPTIONS = [
+  "Servis AC", "Servis Elektronik", "Cuci Motor/Mobil", "Laundry", "Salon & Barbershop", 
+  "Fotografi", "Videografi", "Desain Grafis", "Catering", "Cleaning Service", 
+  "Jasa Antar", "Perbaikan Rumah", "Les Privat", "Konsultasi", "Lainnya"
 ];
-const TARGET_SUGGESTIONS = [
-  { category: "Usia", items: ["Remaja (15\u201320)", "Dewasa Muda (21\u201330)", "Dewasa (31\u201345)", "Paruh Baya (46\u201360)", "Lansia (60+)"] },
-  { category: "Keluarga", items: ["Keluarga Muda", "Pasangan Baru Menikah", "Orang Tua", "Lajang"] },
-  { category: "Pekerjaan", items: ["Karyawan Swasta", "PNS / ASN", "Profesional", "Wirausaha", "Mahasiswa", "Ibu Rumah Tangga", "Freelancer"] },
-  { category: "Bisnis", items: ["Pemilik UMKM", "Perusahaan Besar", "Startup", "Instansi Pemerintah", "Organisasi / Komunitas"] },
-  { category: "Daya Beli", items: ["Kelas Eksklusif", "Kelas Menengah", "Kelas Ekonomis"] },
-  { category: "Gaya Hidup", items: ["Pecinta Teknologi", "Peduli Kesehatan", "Penggemar Kuliner", "Pecinta Seni & Kreatif", "Traveler"] },
-];
+const USIA_OPTIONS = ["17-25 tahun", "26-35 tahun", "36-45 tahun", "46-55 tahun", "55+ tahun"];
+const STATUS_OPTIONS = ["Lajang", "Menikah", "Menikah dengan anak", "Orang tua tunggal", "Lansia"];
+const PEKERJAAN_OPTIONS = ["Pelajar/Mahasiswa", "Karyawan Swasta", "PNS", "Wirausaha", "Ibu Rumah Tangga", "Freelancer", "Profesional (Dokter/Lawyer/dll)"];
+const GAYA_HIDUP_OPTIONS = ["Hemat & Praktis", "Peduli Kualitas", "Aktif & Mobile", "Keluarga & Rumahan", "Sosial & Trendy", "Religius", "Peduli Lingkungan"];
 const STEP_INFO = [
   { label: "Profil Dasar", icon: Building2 },
   { label: "Detail Bisnis", icon: Target },
@@ -43,16 +43,27 @@ const NUANSA_OPTIONS = [
 const INITIAL_FORM: FormData = {
   namaBisnis: "", tagline: "", kategoriJasa: "", lokasi: "", nomorWhatsApp: "",
   telepon: "", email: "", instagram: "", x_twitter: "", tiktok: "",
-  keunggulan: "", layananSpesifik: [], targetPelanggan: [], paketHarga: [],
+  keunggulan: "", layananSpesifik: [], usia: [], statusKeluarga: [], pekerjaan: [], gayaHidup: [], paketHarga: [],
   tema: "", primaryColor: "#4f46e5", logo: "", fotoBisnis: [], portofolio: [],
 };
 const inputClass = "w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-4 py-3 text-[13px] text-zinc-100 placeholder:text-zinc-600 placeholder:italic focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/50 transition-all duration-200";
 const EMPTY_PAKET: PaketHarga = { namaPaket: "", harga: "", fitur: [], isPopuler: false };
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const idParam = searchParams.get('id');
   const [step, setStep] = useState(0);
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM);
   const [templateData, setTemplateData] = useState<TemplateData | null>(null);
+  const [generatedWebsiteId, setGeneratedWebsiteId] = useState<string | null>(null);
+  const [showBackDialog, setShowBackDialog] = useState(false);
+  
+  // Save Prompt State
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [saveActionType, setSaveActionType] = useState<"generate" | "update" | null>(null);
+  const [projectName, setProjectName] = useState("");
+
   const [isLoading, setIsLoading] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [error, setError] = useState("");
@@ -61,6 +72,80 @@ export default function DashboardPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const fotoBisnisInputRef = useRef<HTMLInputElement>(null);
   const portofolioInputRef = useRef<HTMLInputElement>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Auth check — redirect to login if not authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth/login');
+        return;
+      }
+      setAuthChecked(true);
+    };
+    checkAuth();
+  }, [router]);
+
+  useEffect(() => {
+    if (idParam && authChecked) {
+      loadWebsiteData(idParam);
+    }
+  }, [idParam, authChecked]);
+
+  const loadWebsiteData = async (id: string) => {
+    setIsLoading(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/dashboard');
+        return;
+      }
+      const { data, error } = await supabase.from('websites')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+        
+      if (error || !data) {
+        router.push('/dashboard');
+        return;
+      }
+      
+      const loadedFormData = data.generated_content?.__formData || {
+        ...INITIAL_FORM,
+        namaBisnis: data.nama_usaha || "",
+        tagline: data.deskripsi || "",
+        kategoriJasa: data.kategori || "",
+        logo: data.logo_url || "",
+        portofolio: data.foto_urls || [],
+      };
+      setFormData(loadedFormData);
+
+      setTemplateData({
+        ...data.generated_content,
+        namaBisnis: data.generated_content?.namaBisnis || data.nama_usaha || "",
+        kategori: data.generated_content?.kategori || data.kategori || "",
+        lokasi: data.generated_content?.lokasi || loadedFormData.lokasi || "",
+        kontak: data.generated_content?.kontak || { wa: loadedFormData.nomorWhatsApp, telepon: loadedFormData.telepon, email: loadedFormData.email },
+        sosmed: data.generated_content?.sosmed || { instagram: loadedFormData.instagram, tiktok: loadedFormData.tiktok, twitter: loadedFormData.x_twitter },
+        warna: data.generated_content?.warna || { primary: loadedFormData.primaryColor, tema: loadedFormData.tema || "light" },
+        paketHarga: data.generated_content?.paketHarga || loadedFormData.paketHarga || [],
+        logo: data.logo_url || "",
+        portofolio: data.foto_urls || [],
+        fotoBisnis: data.generated_content?.fotoBisnis || [],
+      });
+      setGeneratedWebsiteId(data.id);
+      setStep(2); // Go to Visual step
+    } catch (err) {
+      console.error("Failed to load website", err);
+      router.push('/dashboard');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const updateField = useCallback(
     <K extends keyof FormData>(key: K, value: FormData[K]) => {
@@ -70,7 +155,14 @@ export default function DashboardPage() {
 
   const canProceed = (): boolean => {
     if (step === 0) return !!(formData.namaBisnis.trim() && formData.kategoriJasa.trim() && formData.lokasi && formData.nomorWhatsApp.trim());
-    if (step === 1) return !!(formData.layananSpesifik.length > 0 && formData.keunggulan.trim() && formData.targetPelanggan.length > 0);
+    if (step === 1) return !!(
+      formData.layananSpesifik.length > 0 && 
+      formData.keunggulan.trim() && 
+      formData.usia.length > 0 &&
+      formData.statusKeluarga.length > 0 &&
+      formData.pekerjaan.length > 0 &&
+      formData.gayaHidup.length > 0
+    );
     if (step === 2) return !!formData.tema;
     return false;
   };
@@ -124,31 +216,271 @@ export default function DashboardPage() {
     updateField("paketHarga", updated);
   };
 
+  const handleDiscardAndBack = async () => {
+    if (generatedWebsiteId) {
+      const supabase = createClient();
+      await supabase.from('websites').delete().eq('id', generatedWebsiteId);
+    }
+    router.push('/dashboard/template');
+  };
+
+  const handleSaveAndBack = () => {
+    router.push('/dashboard');
+  };
+
   const handleGenerate = async () => {
     if (!canProceed()) return;
     setIsLoading(true); setIsBuilding(true); setError("");
+    setShowSavePrompt(false);
     try {
-      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) });
-      if (!res.ok) throw new Error("Gagal mengenerate website.");
-      const data: TemplateData = await res.json();
-      data.primaryColor = formData.primaryColor;
-      data.logo = formData.logo;
-      data.fotoBisnis = formData.fotoBisnis;
-      data.portofolio = formData.portofolio;
-      data.paketHarga = formData.paketHarga;
-      data.telepon = formData.telepon;
-      data.email = formData.email;
-      data.instagram = formData.instagram;
-      data.x_twitter = formData.x_twitter;
-      data.tiktok = formData.tiktok;
-      data.targetPelanggan = formData.targetPelanggan;
-      data.tema = (formData.tema || "light") as "dark" | "light";
-      setTemplateData(data);
-      // Show building animation for 5 seconds after data is ready
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("Anda harus login untuk generate website.");
+      }
+
+      // 1. Cleanup expired preview websites
+      await supabase
+        .from('websites')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('status', 'preview')
+        .lt('expires_at', new Date().toISOString());
+
+      // 2. Check total capacity limit (max 6 websites)
+      const { count: totalWebsites } = await supabase
+        .from('websites')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id);
+        
+      if (totalWebsites && totalWebsites >= 6) {
+        throw new Error("Kamu sudah memiliki 6 website. Hapus salah satu website preview untuk membuat yang baru.");
+      }
+
+      // 3. Check daily quota from generate_logs (max 3/day)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const { count: generatedTodayCount, error: quotaError } = await supabase
+        .from('generate_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', today.toISOString());
+
+      if (quotaError) throw new Error("Gagal mengecek kuota.");
+      if ((generatedTodayCount ?? 0) >= 3) {
+        throw new Error("Kamu sudah generate 3x hari ini. Coba lagi besok pukul 00.00 WIB");
+      }
+
+      // Upload function
+      const uploadImage = async (blobUrl: string, folder: string) => {
+        if (!blobUrl.startsWith('blob:')) return blobUrl; // Return existing URL
+        try {
+          const response = await fetch(blobUrl);
+          const blob = await response.blob();
+          const fileExt = blob.type.split('/')[1] || 'png';
+          const fileName = `${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const filePath = `${folder}/${fileName}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('website-assets')
+            .upload(filePath, blob);
+            
+          if (uploadError) throw uploadError;
+          
+          const { data: publicUrlData } = supabase.storage.from('website-assets').getPublicUrl(filePath);
+          return publicUrlData.publicUrl;
+        } catch (e) {
+          console.error("Upload error:", e);
+          throw new Error("Gagal upload gambar. Silakan coba lagi.");
+        }
+      };
+
+      let logoUrl = "";
+      if (formData.logo) {
+        logoUrl = await uploadImage(formData.logo, 'logos');
+      }
+
+      let portofolioUrls: string[] = [];
+      for (const url of formData.portofolio) {
+        const pUrl = await uploadImage(url, 'portofolio');
+        portofolioUrls.push(pUrl);
+      }
+
+      // Call API
+      const res = await fetch("/api/generate", { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify(formData) 
+      });
+
+      if (!res.ok) {
+         const errorData = await res.json().catch(() => null);
+         throw new Error(errorData?.error || "Gagal mengenerate website. Coba lagi.");
+      }
+      
+      const aiData = await res.json();
+
+      const finalData: TemplateData = {
+        hero: aiData.hero || { headline: "", subheadline: "", ctaText: "" },
+        about: aiData.about || { judul: "", deskripsi: "", keunggulan: [] },
+        layanan: aiData.layanan || [],
+        targetPelanggan: aiData.targetPelanggan || { deskripsi: "", painPoint: "", solusi: "" },
+        testimonialPlaceholder: aiData.testimonialPlaceholder || [],
+        footer: aiData.footer || { tagline: "", ctaText: "" },
+        
+        namaBisnis: formData.namaBisnis,
+        kategori: formData.kategoriJasa,
+        lokasi: formData.lokasi,
+        
+        kontak: {
+          wa: formData.nomorWhatsApp,
+          telepon: formData.telepon,
+          email: formData.email,
+        },
+        sosmed: {
+          instagram: formData.instagram,
+          tiktok: formData.tiktok,
+          twitter: formData.x_twitter,
+        },
+        warna: {
+          primary: formData.primaryColor,
+          tema: (formData.tema || "light") as "dark" | "light",
+        },
+        
+        paketHarga: formData.paketHarga,
+        logo: logoUrl,
+        portofolio: portofolioUrls,
+        fotoBisnis: [], // Can be expanded later if needed
+      };
+
+      // Save to DB
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 14);
+
+      const templateId = localStorage.getItem('selected_template') || 'jasa-001';
+
+      let dbData, dbError;
+      
+      const payload = {
+        user_id: user.id,
+        nama_usaha: projectName || formData.namaBisnis || "Website Baru",
+        deskripsi: formData.tagline || aiData.hero?.subheadline || "",
+        kategori: formData.kategoriJasa,
+        logo_url: logoUrl,
+        foto_urls: portofolioUrls,
+        generated_content: { ...finalData, __formData: formData },
+        template_id: templateId,
+        status: 'preview',
+        expires_at: expiresAt.toISOString()
+      };
+
+      if (idParam) {
+        const { data, error } = await supabase.from('websites').update(payload).eq('id', idParam).select('id').single();
+        dbData = data; dbError = error;
+      } else {
+        const { data, error } = await supabase.from('websites').insert(payload).select('id').single();
+        dbData = data; dbError = error;
+      }
+
+      if (dbError) {
+        console.error("DB Error:", dbError);
+        throw new Error("Gagal menyimpan data website ke database.");
+      }
+
+      if (dbData?.id) {
+        setGeneratedWebsiteId(dbData.id);
+
+        // Log generate action for quota tracking
+        await supabase.from('generate_logs').insert({
+          user_id: user.id,
+          website_id: dbData.id,
+        });
+      }
+
+      setTemplateData(finalData);
+      
+      // Show building animation for a few seconds
       await new Promise((resolve) => setTimeout(resolve, 5000));
+      setStep(2); // Lanjut ke step 3
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan tidak terduga.");
-    } finally { setIsLoading(false); setIsBuilding(false); }
+    } finally { 
+      setIsLoading(false); 
+      setIsBuilding(false); 
+    }
+  };
+
+  const handleSaveUpdate = async () => {
+    if (!canProceed() || !idParam) return;
+    setIsLoading(true); setError("");
+    setShowSavePrompt(false);
+
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Anda harus login.");
+
+      const uploadImage = async (blobUrl: string, folder: string) => {
+        if (!blobUrl.startsWith('blob:')) return blobUrl; // already uploaded
+        try {
+          const response = await fetch(blobUrl);
+          const blob = await response.blob();
+          const fileExt = blob.type.split('/')[1] || 'png';
+          const fileName = `${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const filePath = `${folder}/${fileName}`;
+          const { error: uploadError } = await supabase.storage.from('website-assets').upload(filePath, blob);
+          if (uploadError) throw uploadError;
+          const { data: publicUrlData } = supabase.storage.from('website-assets').getPublicUrl(filePath);
+          return publicUrlData.publicUrl;
+        } catch (e) {
+          console.error("Upload error:", e);
+          throw new Error("Gagal upload gambar.");
+        }
+      };
+
+      let logoUrl = formData.logo ? await uploadImage(formData.logo, 'logos') : "";
+      let portofolioUrls: string[] = [];
+      for (const url of formData.portofolio) {
+        portofolioUrls.push(await uploadImage(url, 'portofolio'));
+      }
+
+      // Merge current templateData with new formData
+      const updatedContent: TemplateData = {
+        ...(templateData || ({} as TemplateData)),
+        namaBisnis: formData.namaBisnis,
+        kategori: formData.kategoriJasa,
+        lokasi: formData.lokasi,
+        kontak: { wa: formData.nomorWhatsApp, telepon: formData.telepon, email: formData.email },
+        sosmed: { instagram: formData.instagram, tiktok: formData.tiktok, twitter: formData.x_twitter },
+        warna: { primary: formData.primaryColor, tema: (formData.tema || "light") as "dark" | "light" },
+        paketHarga: formData.paketHarga,
+        logo: logoUrl,
+        portofolio: portofolioUrls,
+      };
+
+      const finalDbContent = { ...updatedContent, __formData: formData };
+
+      const { error: dbError } = await supabase
+        .from('websites')
+        .update({
+          nama_usaha: projectName || formData.namaBisnis || "Website Baru",
+          deskripsi: formData.tagline,
+          kategori: formData.kategoriJasa,
+          logo_url: logoUrl,
+          foto_urls: portofolioUrls,
+          generated_content: finalDbContent,
+        })
+        .eq('id', idParam);
+
+      if (dbError) throw dbError;
+      
+      setTemplateData(updatedContent);
+      alert("Perubahan berhasil disimpan!");
+    } catch (err: any) {
+      setError(err.message || "Gagal menyimpan perubahan.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleOpenFullView = () => {
@@ -163,6 +495,17 @@ export default function DashboardPage() {
       {/* Top Bar */}
       <header className="flex-shrink-0 h-14 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-xl flex items-center justify-between px-3 sm:px-5">
         <div className="flex items-center gap-2 sm:gap-3">
+          <button 
+            type="button" 
+            onClick={() => {
+              if (templateData) setShowBackDialog(true);
+              else router.push('/dashboard/template');
+            }}
+            className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors mr-1 sm:mr-2 cursor-pointer"
+            title="Kembali ke Pilih Template"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
           <img src="/Logo buatkanweb.webp" alt="BuatkanWeb.id Logo" className="w-7 h-7 rounded-lg object-contain" />
           <span className="font-semibold text-[14px] tracking-tight text-zinc-100">BuatkanWeb.id</span>
         </div>
@@ -237,13 +580,9 @@ export default function DashboardPage() {
                       <input id="input-whatsapp" type="text" value={formData.nomorWhatsApp} onChange={(e) => updateField("nomorWhatsApp", e.target.value)} placeholder="628xxx" className={`${inputClass} !py-2 !text-[12px]`} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Telepon</label>
-                      <input id="input-telepon" type="text" value={formData.telepon} onChange={(e) => updateField("telepon", e.target.value)} placeholder="021-xxxx" className={`${inputClass} !py-2 !text-[12px]`} />
+                      <label className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Email</label>
+                      <input id="input-email" type="email" value={formData.email} onChange={(e) => updateField("email", e.target.value)} placeholder="info@bisnis.com" className={`${inputClass} !py-2 !text-[12px]`} />
                     </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Email</label>
-                    <input id="input-email" type="email" value={formData.email} onChange={(e) => updateField("email", e.target.value)} placeholder="contoh: info@bisnis.com" className={`${inputClass} !py-2 !text-[12px]`} />
                   </div>
                 </div>
 
@@ -278,11 +617,30 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="flex items-center gap-1.5 text-[12px] font-medium text-zinc-400 uppercase tracking-wider"><Award className="w-3 h-3" /> Layanan Spesifik</label>
-                  <AutocompleteTagInput id="input-layanan" tags={formData.layananSpesifik} onChange={(tags) => updateField("layananSpesifik", tags)} suggestions={LAYANAN_SUGGESTIONS} placeholder="contoh: Cuci AC" />
+                  <MultiSelectDropdown id="input-layanan" value={formData.layananSpesifik} onChange={(val) => updateField("layananSpesifik", val)} options={LAYANAN_OPTIONS} placeholder="Pilih layanan..." />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-3 pt-2">
                   <label className="flex items-center gap-1.5 text-[12px] font-medium text-zinc-400 uppercase tracking-wider"><Target className="w-3 h-3" /> Target Pelanggan</label>
-                  <AutocompleteTagInput id="input-target" tags={formData.targetPelanggan} onChange={(tags) => updateField("targetPelanggan", tags)} suggestions={TARGET_SUGGESTIONS} placeholder="contoh: Ibu Rumah Tangga" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Usia</label>
+                      <MultiSelectDropdown id="input-usia" value={formData.usia} onChange={(val) => updateField("usia", val)} options={USIA_OPTIONS} placeholder="Pilih usia..." />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Status Keluarga</label>
+                      <MultiSelectDropdown id="input-status" value={formData.statusKeluarga} onChange={(val) => updateField("statusKeluarga", val)} options={STATUS_OPTIONS} placeholder="Pilih status..." />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Pekerjaan</label>
+                      <MultiSelectDropdown id="input-pekerjaan" value={formData.pekerjaan} onChange={(val) => updateField("pekerjaan", val)} options={PEKERJAAN_OPTIONS} placeholder="Pilih pekerjaan..." />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Gaya Hidup</label>
+                      <MultiSelectDropdown id="input-gayahidup" value={formData.gayaHidup} onChange={(val) => updateField("gayaHidup", val)} options={GAYA_HIDUP_OPTIONS} placeholder="Pilih gaya hidup..." />
+                    </div>
+                  </div>
                 </div>
 
                 {/* ── Paket Harga Builder ── */}
@@ -514,8 +872,17 @@ export default function DashboardPage() {
               <button type="button" onClick={() => setStep((s) => s + 1)} disabled={!canProceed()} className={`flex-1 flex items-center justify-center gap-1.5 font-medium text-[13px] py-3 rounded-xl transition-all duration-200 cursor-pointer ${canProceed() ? "bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-600/20" : "bg-zinc-800 text-zinc-100 opacity-40 cursor-not-allowed"}`}>
                 Lanjut <ChevronRight className="w-3.5 h-3.5" />
               </button>
+            ) : idParam ? (
+              <div className="flex-1 flex gap-2">
+                <button type="button" onClick={() => { setProjectName(formData.namaBisnis || ""); setSaveActionType("generate"); setShowSavePrompt(true); }} disabled={!canProceed() || isLoading} className="flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-white font-medium text-[13px] py-3.5 rounded-xl hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer border border-zinc-700">
+                  {isLoading ? (<><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</>) : ("Generate Ulang")}
+                </button>
+                <button type="button" onClick={() => { setProjectName(formData.namaBisnis || ""); setSaveActionType("update"); setShowSavePrompt(true); }} disabled={!canProceed() || isLoading} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-medium text-[13px] py-3.5 rounded-xl hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-600/20 cursor-pointer">
+                  {isLoading ? (<><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</>) : ("Simpan Perubahan")}
+                </button>
+              </div>
             ) : (
-              <button id="btn-generate" type="button" onClick={handleGenerate} disabled={!canProceed() || isLoading} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-medium text-[13px] py-3.5 rounded-xl hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-600/20 disabled:shadow-none cursor-pointer">
+              <button id="btn-generate" type="button" onClick={() => { setProjectName(formData.namaBisnis || ""); setSaveActionType("generate"); setShowSavePrompt(true); }} disabled={!canProceed() || isLoading} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white font-medium text-[13px] py-3.5 rounded-xl hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-600/20 disabled:shadow-none cursor-pointer">
                 {isLoading ? (<><Loader2 className="w-4 h-4 animate-spin" /> Sedang memproses...</>) : ("Generate Website")}
               </button>
             )}
@@ -555,32 +922,32 @@ export default function DashboardPage() {
                   <div className="flex-1 flex items-center justify-center">
                     <div className="flex items-center gap-1.5 bg-zinc-800/80 rounded-lg px-3 py-1 max-w-xs w-full">
                       <Globe className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-                      <span className="text-zinc-500 text-[11px] truncate">{templateData ? `${templateData.namaBisnis.toLowerCase().replace(/\s+/g, "-")}.buatkanweb.id` : "preview.buatkanweb.id"}</span>
+                      <span className="text-zinc-500 text-[11px] truncate">{templateData?.namaBisnis ? `${templateData.namaBisnis.toLowerCase().replace(/\s+/g, "-")}.buatkanweb.id` : "preview.buatkanweb.id"}</span>
                     </div>
                   </div>
                   <div className="w-[52px]" />
                 </div>
-                <div className={`flex-1 overflow-y-auto ${templateData?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>{templateData ? <TemplateSatu {...templateData} forceMobile={false} /> : <EmptyState />}</div>
+                <div className={`flex-1 overflow-y-auto ${templateData?.warna?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>{templateData ? <TemplateSatu {...templateData} forceMobile={false} /> : <EmptyState />}</div>
                 {isBuilding && <BuildingOverlay />}
               </div>
             </div>
             <div className={`hidden md:block absolute inset-0 transition-all duration-500 ease-in-out ${viewMode === "mobile" ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"}`}>
               <div className="h-full flex items-center justify-center p-4">
-                <div className={`relative w-[393px] h-[852px] max-h-full shrink-0 border-[8px] border-zinc-800 rounded-[3rem] overflow-hidden shadow-2xl shadow-black/40 flex flex-col ${templateData?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>
-                  <div className={`flex-shrink-0 flex justify-center pt-3 pb-1 z-10 ${templateData?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>
+                <div className={`relative w-[393px] h-[852px] max-h-full shrink-0 border-[8px] border-zinc-800 rounded-[3rem] overflow-hidden shadow-2xl shadow-black/40 flex flex-col ${templateData?.warna?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>
+                  <div className={`flex-shrink-0 flex justify-center pt-3 pb-1 z-10 ${templateData?.warna?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>
                     <div className="w-[126px] h-[37px] bg-black rounded-full flex items-center justify-center">
                       <div className="w-3 h-3 rounded-full bg-zinc-800 border border-zinc-700 mr-2" /><div className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
                     </div>
                   </div>
                   <div className="h-full w-full overflow-y-auto">{templateData ? <TemplateSatu {...templateData} forceMobile={true} /> : <EmptyState />}</div>
-                  <div className={`flex-shrink-0 flex justify-center py-2 ${templateData?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}><div className={`w-32 h-1 rounded-full ${templateData?.tema === "dark" ? "bg-zinc-700" : "bg-zinc-300"}`} /></div>
+                  <div className={`flex-shrink-0 flex justify-center py-2 ${templateData?.warna?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}><div className={`w-32 h-1 rounded-full ${templateData?.warna?.tema === "dark" ? "bg-zinc-700" : "bg-zinc-300"}`} /></div>
                   {isBuilding && <BuildingOverlay />}
                 </div>
               </div>
             </div>
             {/* ── Mobile-only: direct inline preview (no device frame) ── */}
             <div className="md:hidden w-full h-full flex flex-col rounded-xl border border-zinc-800 overflow-hidden relative">
-              <div className={`flex-1 overflow-y-auto ${templateData?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>
+              <div className={`flex-1 overflow-y-auto ${templateData?.warna?.tema === "dark" ? "bg-zinc-950" : "bg-white"}`}>
                 {templateData ? <TemplateSatu {...templateData} forceMobile={true} /> : <EmptyState />}
               </div>
               {isBuilding && <BuildingOverlay />}
@@ -588,6 +955,130 @@ export default function DashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Back Dialog */}
+      {showBackDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20">
+              <Building2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Simpan website ini?</h3>
+            <p className="text-zinc-400 text-[13px] mb-6 leading-relaxed">
+              Perlu diketahui: generate ini tetap mengurangi kuota harian kamu meskipun tidak disimpan.
+            </p>
+            <div className="flex flex-col w-full gap-2">
+              <button
+                type="button"
+                onClick={handleSaveAndBack}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                Simpan ke Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardAndBack}
+                className="w-full bg-zinc-800 hover:bg-red-900/30 text-zinc-300 hover:text-red-400 font-medium py-2.5 rounded-xl transition-colors border border-zinc-700 hover:border-red-900/50 cursor-pointer"
+              >
+                Tidak, Buang
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowBackDialog(false)}
+                className="w-full bg-transparent hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 font-medium py-2.5 rounded-xl transition-colors mt-2 cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save/Generate Prompt Dialog */}
+      {showSavePrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-white mb-2">Nama Project Website</h3>
+            <p className="text-zinc-400 text-[13px] mb-5 leading-relaxed">
+              Beri nama project ini agar mudah dicari di Dashboard. Nama ini tidak akan terlihat oleh pelanggan Anda.
+            </p>
+            <div className="mb-6">
+                <input 
+                    type="text"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    placeholder="Contoh: Landing Page Promo"
+                    autoFocus
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            saveActionType === "generate" ? handleGenerate() : handleSaveUpdate();
+                        }
+                    }}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-[14px] text-white focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSavePrompt(false)}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => saveActionType === "generate" ? handleGenerate() : handleSaveUpdate()}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                {saveActionType === "generate" ? "Generate" : "Simpan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save/Generate Prompt Dialog */}
+      {showSavePrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-white mb-2">Nama Project Website</h3>
+            <p className="text-zinc-400 text-[13px] mb-5 leading-relaxed">
+              Beri nama project ini agar mudah dicari di Dashboard. Nama ini tidak akan terlihat oleh pelanggan Anda.
+            </p>
+            <div className="mb-6">
+                <input 
+                    type="text"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    placeholder="Contoh: Landing Page Promo"
+                    autoFocus
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            saveActionType === "generate" ? handleGenerate() : handleSaveUpdate();
+                        }
+                    }}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-[14px] text-white focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSavePrompt(false)}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => saveActionType === "generate" ? handleGenerate() : handleSaveUpdate()}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                {saveActionType === "generate" ? "Generate" : "Simpan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
