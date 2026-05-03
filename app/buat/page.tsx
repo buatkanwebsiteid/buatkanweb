@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { TemplateData, FormData, PaketHarga } from "@/types";
 import TemplateSatu from "@/components/templates/TemplateSatu";
@@ -49,7 +49,7 @@ const INITIAL_FORM: FormData = {
 const inputClass = "w-full bg-zinc-900/80 border border-zinc-800 rounded-xl px-4 py-3 text-[13px] text-zinc-100 placeholder:text-zinc-600 placeholder:italic focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/50 transition-all duration-200";
 const EMPTY_PAKET: PaketHarga = { namaPaket: "", harga: "", fitur: [], isPopuler: false };
 
-export default function DashboardPage() {
+function BuatContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const idParam = searchParams.get('id');
@@ -1080,6 +1080,18 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function BuatPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0f1e]">
+        <div className="text-white text-sm">Memuat...</div>
+      </div>
+    }>
+      <BuatContent />
+    </Suspense>
   );
 }
 
